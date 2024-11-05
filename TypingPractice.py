@@ -37,9 +37,9 @@ class TypingPractice:
         self.key_positions = {
             '⇧ (L)': (3, 0, 3),    # Left Shift
             '⇧ (R)': (3, 25, 27),  # Right Shift
-            '⭾': (1, 1, 2),        # Tab
-            '↲': (2, 23, 24),      # Enter
-            '⇪': (2, 2, 3),        # Caps Lock
+            '⭾': (1, 0, 1),        # Tab
+            '↲': (2, 26, 27),      # Enter
+            '⇪': (2, 0, 2),        # Caps Lock
             '⇦': (0, 26, 27),      # Backspace
             "―       ―": (4, 9, 17) # Space bar
         }
