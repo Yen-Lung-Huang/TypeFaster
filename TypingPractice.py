@@ -84,7 +84,8 @@ class TypingPractice:
                 ('bold_wrong_text', 'dark red,bold', 'default'),
                 ('keyboard', 'white', 'black'),
                 ('key_highlight', 'black', 'yellow'),
-                ('key_pressed', 'black', 'light cyan'),
+                ('key_default', 'black', 'light cyan'),
+                ('key_pressed', 'white,bold', 'dark blue'),
                 ('key_correct', 'black', 'dark green'),
                 ('key_wrong', 'black', 'dark red'),
                 ('toggle_button', 'black,bold', 'dark gray'),
@@ -146,15 +147,15 @@ class TypingPractice:
 
                 # Handle special keys with specific positions
                 if key == '⇧' and col_idx < 4:  # Left Shift
-                    key_obj = Key("⇧", 'shift_left', self.key_positions['⇧ (L)'], highlight_color='key_pressed')
+                    key_obj = Key("⇧", 'shift_left', self.key_positions['⇧ (L)'], highlight_color='key_default')
                     self.key_coordinates['⇧ (L)'] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
                 elif key == '⇧' and col_idx > 20:  # Right Shift
-                    key_obj = Key("⇧", 'shift_right', self.key_positions['⇧ (R)'], highlight_color='key_pressed')
+                    key_obj = Key("⇧", 'shift_right', self.key_positions['⇧ (R)'], highlight_color='key_default')
                     self.key_coordinates['⇧ (R)'] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
                 elif row[col_idx:col_idx + 9] == "―       ―":  # Space bar
-                    key_obj = Key("―       ―", " ", self.key_positions["―       ―"], highlight_color='key_pressed')
+                    key_obj = Key("―       ―", " ", self.key_positions["―       ―"], highlight_color='key_default')
                     self.key_coordinates["―       ―"] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
                     col_idx += 8
@@ -173,51 +174,98 @@ class TypingPractice:
 
     # Include all other methods from your original code...
     def _generate_random_char(self):
-        chars = string.ascii_uppercase + string.digits + string.punctuation
+        # Use both ascii_letters (contains lower and upper case) along with digits and punctuation.
+        chars = string.ascii_letters + string.digits + string.punctuation
         return random.choice(chars)
 
     def _highlight_key(self, char):
+        # Store the original character before any mapping.
+        original_char = char
+        # If the character requires a special mapping (e.g., '!' maps to '1'),
+        # then use the mapped value.
         if char in self.special_char_mapping:
             char = self.special_char_mapping[char]
-        char = char.upper()
-        if char in self.key_coordinates:
-            row_idx, col_idx = self.key_coordinates[char]
+        # Convert the character to uppercase for key coordinate lookup.
+        key_to_highlight = char.upper()
+        # Highlight the target key if it exists on the keyboard.
+        if key_to_highlight in self.key_coordinates:
+            row_idx, col_idx = self.key_coordinates[key_to_highlight]
             self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                urwid.AttrMap(urwid.Text(char, align='center'), 'key_highlight'),
+                urwid.AttrMap(urwid.Text(key_to_highlight, align='center'), 'key_highlight'),
                 ('pack', None, False)
             )
+        # Only highlight Shift keys if the original character requires Shift.
+        # That is, if the original character is an uppercase letter or it is a symbol that requires Shift.
+        if (original_char.isalpha() and original_char.isupper()) or (original_char in self.special_char_mapping):
+            for shift_key in ["⇧ (L)", "⇧ (R)"]:
+                if shift_key in self.key_coordinates:
+                    shift_row, shift_col = self.key_coordinates[shift_key]
+                    self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                        urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_highlight'),
+                        ('pack', None, False)
+                    )
 
     def _highlight_persistent_keys(self):
         for key in self.persistent_highlight_keys:
             if key in self.key_coordinates:
                 row_idx, col_idx = self.key_coordinates[key]
                 self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                    urwid.AttrMap(urwid.Text(key, align='center'), 'key_pressed'),
+                    urwid.AttrMap(urwid.Text(key, align='center'), 'key_default'),
                     ('pack', None, False)
                 )
 
     def _reset_keyboard_highlight(self, loop=None, user_data=None):
-        target_char = self.current_char.upper()
-        target_coords = None
+        # Store the original target character.
+        original_target = self.current_char
+        # Determine if the target requires Shift.
+        shift_required = False
+        if original_target in self.special_char_mapping:
+            # For symbols that require Shift (e.g., '!', '@', etc.), use the unshifted mapping.
+            mapped_target = self.special_char_mapping[original_target]
+            shift_required = True
+        else:
+            # For alphabetic characters, use uppercase for mapping.
+            mapped_target = original_target.upper() if original_target.isalpha() else original_target
+            # If the original target is an uppercase letter, Shift is required.
+            if original_target.isalpha() and original_target.isupper():
+                shift_required = True
 
-        if target_char in self.special_char_mapping:
-            target_char = self.special_char_mapping[target_char]
-        if target_char in self.key_coordinates:
-            target_coords = self.key_coordinates[target_char]
+        # Retrieve the coordinates of the target key, if available.
+        target_coords = self.key_coordinates.get(mapped_target, None)
 
+        # Iterate over each row in the keyboard layout.
         for row_idx, row in enumerate(self.keyboard_layout.contents):
             row_widget = row[0]
+            # Iterate over each key in the current row.
             for col_idx, (col, _) in enumerate(row_widget.contents):
                 key = col.base_widget.get_text()[0]
+                # Reset each key to the default style (for most keys, 'keyboard') unless it's the target key.
                 if key.strip() and (row_idx, col_idx) != target_coords:
-                    # Below line is modified to skip resetting the Shift keys
-                    if key not in ['⇧', '⇧']:  # or use an identifier for shift keys if you have those
-                        self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                            urwid.AttrMap(urwid.Text(key, align='center'), 'keyboard'),
-                            ('pack', None, False)
-                        )
-
+                    self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+                        urwid.AttrMap(urwid.Text(key, align='center'), 'keyboard'),
+                        ('pack', None, False)
+                    )
+        # Reset both left and right Shift keys to the default style.
+        for shift_key in ["⇧ (L)", "⇧ (R)"]:
+            if shift_key in self.key_coordinates:
+                shift_row, shift_col = self.key_coordinates[shift_key]
+                self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                    urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_default'),
+                    ('pack', None, False)
+                )
+        # Reapply persistent highlights for keys that should always remain highlighted,
+        # ensuring that Shift keys are excluded if they need dynamic styling.
         self._highlight_persistent_keys()
+
+        # If the target requires Shift (uppercase letter or shifted symbol), override the Shift keys with highlight style.
+        if shift_required:
+            for shift_key in ["⇧ (L)", "⇧ (R)"]:
+                if shift_key in self.key_coordinates:
+                    shift_row, shift_col = self.key_coordinates[shift_key]
+                    self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                        urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_highlight'),
+                        ('pack', None, False)
+                    )
 
     def handle_input(self, key):
         if key == 'esc':
@@ -276,7 +324,7 @@ class TypingPractice:
             if key in self.key_coordinates:
                 row_idx, col_idx = self.key_coordinates[key]
                 self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                    urwid.AttrMap(urwid.Text(key.capitalize(), align='center'), 'key_pressed'),
+                    urwid.AttrMap(urwid.Text(key.capitalize(), align='center'), 'key_default'),
                     ('pack', None, False)
                 )
 
