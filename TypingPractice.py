@@ -25,8 +25,26 @@ class Key:
     def set_mode(self, mode):
         if mode == 'zhuyin' and self.zhuyin_char:
             self.widget_text.set_text(self.zhuyin_char)
+        elif mode == 'mixed':
+             # In mixed mode, the key label depends on what we want to show.
+             # Usually keyboards show English. Let's stick to English for the physical key look,
+             # or maybe show both? For simplicity and cleanliness, let's show English
+             # unless we want to dynamically change it based on the target.
+             # But the user wants a static keyboard look usually.
+             # Let's stick to English labels for Mixed mode for now, or maybe Zhuyin?
+             # Actually, if it's mixed, the user needs to know the mapping.
+             # Let's default to English labels for Mixed, as it's the base.
+             # Or we can toggle it? Let's keep it English for now or maybe Zhuyin if the target is Zhuyin?
+             # No, the keyboard display should probably be static or mode-dependent.
+             # Let's set it to English for Mixed mode to avoid confusion, or maybe Zhuyin?
+             # Let's use English as default.
+             self.widget_text.set_text(self.display_text)
         else:
             self.widget_text.set_text(self.display_text)
+    
+    def set_style(self, style):
+        self.highlight_color = style
+        self.widget.set_attr_map({None: style})
 
 class TypingPractice:
     special_char_mapping = {
@@ -54,7 +72,10 @@ class TypingPractice:
 
     def __init__(self):
         self.show_keyboard = True
-        self.mode = 'english' # 'english' or 'zhuyin'
+        self.modes = ['english', 'zhuyin', 'mixed']
+        self.mode_index = 0
+        self.mode = self.modes[self.mode_index]
+        
         self.current_char = self._generate_random_char()
         self.correct_count = 0
         self.total_count = 0
@@ -70,16 +91,51 @@ class TypingPractice:
             "―       ―": (4, 9, 17) # Space bar
         }
 
+        # Finger Mappings (Updated Colors)
+        # Thumb: Purple (Dark Magenta)
+        # Pinky: Red
+        # Ring: Yellow
+        # Middle: Green
+        # Index: Blue
+        self.finger_mapping = {}
+        
+        # Pinky (Red)
+        for k in ['`', '1', 'Q', 'A', 'Z', '0', '-', '=', 'P', '[', ']', '\\', ';', "'", '/', '⇧', '⭾', '↲', '⇪', '⇦']:
+            self.finger_mapping[k] = 'pinky'
+        
+        # Ring (Yellow)
+        for k in ['2', 'W', 'S', 'X', '9', 'O', 'L', '.']:
+            self.finger_mapping[k] = 'ring'
+            
+        # Middle (Green)
+        for k in ['3', 'E', 'D', 'C', '8', 'I', 'K', ',']:
+            self.finger_mapping[k] = 'middle'
+            
+        # Index (Blue)
+        for k in ['4', '5', 'R', 'T', 'F', 'G', 'V', 'B', '6', '7', 'Y', 'U', 'H', 'J', 'N', 'M']:
+            self.finger_mapping[k] = 'index'
+            
+        # Thumb (Purple)
+        self.finger_mapping["―       ―"] = 'thumb'
+        self.finger_mapping[" "] = 'thumb'
+
         self.txt_target = urwid.Text([('bold', "Target Character: "), ('bold_target', f" {self.current_char} ")], align='center')
         self.txt_stats = urwid.Text(('bold', "Accuracy: 0% (0/0)"), align='center')
-        self.txt_instruction = urwid.Text(('instruction', "Press ESC to exit | F1 to toggle Mode"), align='center')
-        self.txt_mode = urwid.Text(('bold', f"Mode: {self.mode.capitalize()}"), align='center')
+        self.txt_instruction = urwid.Text(('instruction', "Press ESC to exit"), align='center')
+        
+        # Graphical Mode Toggle
+        self.mode_button_text = urwid.SelectableIcon(self._get_mode_text(), 0, align='center')
+        self.mode_button = urwid.Button('')
+        self.mode_button._w = self.mode_button_text
+        urwid.connect_signal(self.mode_button, 'click', self.toggle_mode_click)
+        self.mode_button = urwid.AttrMap(self.mode_button, 'mode_button', 'mode_button_focus')
 
         self.toggle_button_text = urwid.SelectableIcon(('bold', f"▼ {str_vkey_tip}"), 0, align='center')
         self.toggle_button = urwid.Button('')
         self.toggle_button._w = self.toggle_button_text
         urwid.connect_signal(self.toggle_button, 'click', self.toggle_keyboard)
-        self.toggle_button = urwid.AttrMap(self.toggle_button, 'toggle_button')
+        # Set focus_map to None or same as attr_map to avoid background change on focus
+        self.toggle_button = urwid.AttrMap(self.toggle_button, 'toggle_button', 'toggle_button')
 
         self.key_coordinates = {}
         self.keys_objects = {} # Store Key objects to update them later
@@ -87,7 +143,7 @@ class TypingPractice:
 
         self.pile = urwid.Pile([
             urwid.Divider(),
-            self.txt_mode,
+            urwid.Padding(self.mode_button, width=40, align='center'),
             urwid.Divider(),
             self.txt_target,
             urwid.Divider(),
@@ -107,7 +163,7 @@ class TypingPractice:
             self.main_widget,
             palette=[
                 ('bold', 'white,bold', 'default'),
-                ('bold_target', 'white,bold', 'dark gray'),
+                ('bold_target', 'yellow,bold', 'dark blue'),
                 ('bold_correct', 'white,bold', 'dark green'),
                 ('bold_wrong', 'white,bold', 'dark red'),
                 ('bold_correct_text', 'dark green,bold', 'default'),
@@ -119,15 +175,37 @@ class TypingPractice:
                 ('key_correct', 'black', 'dark green'),
                 ('key_wrong', 'black', 'dark red'),
                 ('toggle_button', 'default,bold', 'default'),
+                ('mode_button', 'default,bold', 'default'),
+                ('mode_button_focus', 'default,bold', 'default'), # Removed blue background
                 ('instruction', 'dark gray,bold', 'default'),
+                
+                # Finger Colors (Updated)
+                # Pinky: Red
+                ('key_pinky', 'light red,bold', 'default'),
+                ('highlight_pinky', 'black,bold', 'light red'),
+                
+                # Ring: Yellow
+                ('key_ring', 'yellow,bold', 'default'),
+                ('highlight_ring', 'black,bold', 'yellow'),
+                
+                # Middle: Green
+                ('key_middle', 'light green,bold', 'default'),
+                ('highlight_middle', 'black,bold', 'light green'),
+                
+                # Index: Blue
+                ('key_index', 'light blue,bold', 'default'),
+                ('highlight_index', 'black,bold', 'light blue'),
+                
+                # Thumb: Purple
+                ('key_thumb', 'dark magenta,bold', 'default'),
+                ('highlight_thumb', 'black,bold', 'dark magenta'),
             ],
             unhandled_input=self.handle_input
         )
 
-        # List of special keys that should remain highlighted
+        # List of special keys that should remain highlighted (but now they have finger colors)
         self.persistent_highlight_keys = ['⇧', '⭾', '↲', '⇪', '⇦', "―       ―"]
-        self._highlight_persistent_keys()
-
+        
         # Define left hand keys (standard touch typing)
         self.left_hand_keys = set([
             '`', '1', '2', '3', '4', '5',
@@ -136,20 +214,77 @@ class TypingPractice:
             'Z', 'X', 'C', 'V', 'B'
         ])
 
+    def _get_mode_text(self):
+        # ■ English □ Zhuyin □ Mixed
+        modes_display = []
+        for m in self.modes:
+            icon = "■" if self.mode == m else "□"
+            modes_display.append(f"{icon} {m.capitalize()}")
+        return "   ".join(modes_display)
+
+    def _get_key_style(self, key_char, highlight=False):
+        finger = self.finger_mapping.get(key_char.upper(), 'keyboard')
+        if finger == 'keyboard':
+             # Fallback for unknown keys
+             return 'key_highlight' if highlight else 'keyboard'
+        
+        if highlight:
+            return f'highlight_{finger}'
+        else:
+            return f'key_{finger}'
+
     def _create_keyboard_padding(self):
         self.keyboard_layout = self._create_keyboard_layout()
         self.keyboard_widget = urwid.AttrMap(self.keyboard_layout, 'keyboard')
         self.keyboard_box = urwid.LineBox(self.keyboard_widget)
 
-        max_width = max([sum(len(col[0].base_widget.text) for col in row[0].contents) for row in self.keyboard_layout.contents]) + 2
-
+        # Calculate max width dynamically based on the content
+        # We need to render it or estimate it.
+        # English keys are usually 1 char + 1 space = 2 width approx.
+        # Zhuyin keys are 1 char (wide) + 1 space = 3 width approx.
+        # But we are using urwid Columns.
+        
+        # Let's try to measure the string length of the rows.
+        # In _create_keyboard_layout, we build rows.
+        # If we are in Zhuyin mode, the text is wider.
+        
+        # A simple heuristic:
+        # If Zhuyin mode, add extra padding.
+        # If English mode, tighter padding.
+        
+        base_width = 0
+        # Estimate based on the longest row string length in English
+        # "` 1 2 3 4 5 6 7 8 9 0 - = ⇦" -> 27 chars approx
+        # But with spaces it's more.
+        
+        # Let's rely on urwid's packing if possible, but we need a width for Padding.
+        # We can set width='pack' for Padding? No, Padding needs a width or 'pack' might work if inner widget supports it.
+        # LineBox wraps a Pile of Columns. Columns 'pack' width is sum of components.
+        
+        # Let's try to calculate it from the generated layout.
+        max_row_width = 0
+        for row in self.keyboard_layout.contents:
+            row_widget = row[0] # Columns
+            current_row_width = 0
+            for col, options in row_widget.contents:
+                # col is AttrMap -> Text
+                text_widget = col.base_widget
+                text = text_widget.text
+                # Estimate width: 1 for ascii, 2 for wide chars
+                w = 0
+                for char in text:
+                    if ord(char) > 127: w += 2
+                    else: w += 1
+                current_row_width += w
+            max_row_width = max(max_row_width, current_row_width)
+            
         return urwid.Padding(
             self.keyboard_box,
             align='center',
-            width=max_width,
+            width=max_row_width + 2, # +2 for LineBox borders
             min_width=40,
-            left=1,
-            right=1
+            left=0,
+            right=0
         )
 
     def toggle_keyboard(self, button):
@@ -184,22 +319,28 @@ class TypingPractice:
 
                 # Handle special keys with specific positions
                 if key == '⇧' and col_idx < 4:  # Left Shift
-                    key_obj = Key("⇧", 'shift_left', self.key_positions['⇧ (L)'], highlight_color='key_default')
+                    style = self._get_key_style('⇧')
+                    key_obj = Key("⇧", 'shift_left', self.key_positions['⇧ (L)'], highlight_color=style)
                     self.key_coordinates['⇧ (L)'] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
-                elif key == '⇧' and col_idx > 20:  # Right Shift
-                    key_obj = Key("⇧", 'shift_right', self.key_positions['⇧ (R)'], highlight_color='key_default')
+                elif key == '⇧' and col_idx > 15:  # Right Shift (Adjusted index check)
+                    style = self._get_key_style('⇧')
+                    key_obj = Key("⇧", 'shift_right', self.key_positions['⇧ (R)'], highlight_color=style)
                     self.key_coordinates['⇧ (R)'] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
                 elif row[col_idx:col_idx + 9] == "―       ―":  # Space bar
-                    key_obj = Key("―       ―", " ", self.key_positions["―       ―"], highlight_color='key_default')
+                    style = self._get_key_style("―       ―")
+                    key_obj = Key("―       ―", " ", self.key_positions["―       ―"], highlight_color=style)
                     self.key_coordinates["―       ―"] = (row_idx, len(row_buttons))
                     row_buttons.append(('pack', key_obj.get_widget()))
                     col_idx += 8
+                elif key == ' ': # Plain spacing
+                    row_buttons.append(('pack', urwid.Text(' ')))
                 else:
                     key_positions = (row_idx, col_idx, col_idx)
                     zhuyin = self.zhuyin_mapping.get(key.lower())
-                    key_obj = Key(key, key, key_positions, zhuyin_char=zhuyin)
+                    style = self._get_key_style(key)
+                    key_obj = Key(key, key, key_positions, highlight_color=style, zhuyin_char=zhuyin)
                     self.key_coordinates[key] = (row_idx, len(row_buttons))
                     self.keys_objects[key] = key_obj # Store for mode switching
                     row_buttons.append(('pack', key_obj.get_widget()))
@@ -212,7 +353,11 @@ class TypingPractice:
         return urwid.Pile(keyboard_widgets)
 
     def _generate_random_char(self):
-        if self.mode == 'english':
+        target_mode = self.mode
+        if self.mode == 'mixed':
+            target_mode = random.choice(['english', 'zhuyin'])
+            
+        if target_mode == 'english':
             # Use both ascii_letters (contains lower and upper case) along with digits and punctuation.
             chars = string.ascii_letters + string.digits + string.punctuation
             return random.choice(chars)
@@ -223,10 +368,19 @@ class TypingPractice:
         # Store the original character before any mapping.
         original_char = char
         
+        # Determine the mode for this specific character
+        # If mixed, we need to guess. 
+        # If char is in zhuyin values, it's zhuyin.
+        # If char is ascii, it's english.
+        
+        current_char_mode = 'english'
+        if char in self.zhuyin_mapping.values():
+            current_char_mode = 'zhuyin'
+        
         # Find the key to highlight
         key_to_highlight = None
         
-        if self.mode == 'english':
+        if current_char_mode == 'english':
             # If the character requires a special mapping (e.g., '!' maps to '1'),
             # then use the mapped value.
             if char in self.special_char_mapping:
@@ -248,50 +402,59 @@ class TypingPractice:
             row_idx, col_idx = self.key_coordinates[key_to_highlight]
             
             display_text = key_to_highlight
-            if self.mode == 'zhuyin' and key_to_highlight.lower() in self.zhuyin_mapping:
+            
+            # In Mixed mode, we might want to show the Zhuyin char on the key if it's a Zhuyin target?
+            # Or keep the keyboard static?
+            # Let's update the key label to match the target mode if we are in Mixed mode.
+            if self.mode == 'mixed':
+                 if current_char_mode == 'zhuyin' and key_to_highlight.lower() in self.zhuyin_mapping:
+                     display_text = self.zhuyin_mapping[key_to_highlight.lower()]
+                 else:
+                     display_text = key_to_highlight
+            elif self.mode == 'zhuyin' and key_to_highlight.lower() in self.zhuyin_mapping:
                  display_text = self.zhuyin_mapping[key_to_highlight.lower()]
 
+            # Use finger-based highlight style
+            style = self._get_key_style(key_to_highlight, highlight=True)
+
             self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                urwid.AttrMap(urwid.Text(display_text, align='center'), 'key_highlight'),
+                urwid.AttrMap(urwid.Text(display_text, align='center'), style),
                 ('pack', None, False)
             )
         
         # Only highlight Shift keys if the original character requires Shift (English mode only mostly)
-        if self.mode == 'english':
+        if current_char_mode == 'english':
             if (original_char.isalpha() and original_char.isupper()) or (original_char in self.special_char_mapping):
                 # Determine which Shift key to use
-                # If the key is typed with the left hand, use Right Shift.
-                # If the key is typed with the right hand, use Left Shift.
-                
                 shift_key_to_use = "⇧ (L)" # Default to Left Shift (for right hand keys)
                 if key_to_highlight in self.left_hand_keys:
                     shift_key_to_use = "⇧ (R)"
                 
                 if shift_key_to_use in self.key_coordinates:
                     shift_row, shift_col = self.key_coordinates[shift_key_to_use]
+                    # Shift is Pinky
+                    style = self._get_key_style('⇧', highlight=True)
                     self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
-                        urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_highlight'),
+                        urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                         ('pack', None, False)
                     )
 
     def _highlight_persistent_keys(self):
-        for key in self.persistent_highlight_keys:
-            if key in self.key_coordinates:
-                row_idx, col_idx = self.key_coordinates[key]
-                self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                    urwid.AttrMap(urwid.Text(key, align='center'), 'key_default'),
-                    ('pack', None, False)
-                )
+        pass
 
     def _reset_keyboard_highlight(self, loop=None, user_data=None):
         # Store the original target character.
         original_target = self.current_char
         
+        current_char_mode = 'english'
+        if original_target in self.zhuyin_mapping.values():
+            current_char_mode = 'zhuyin'
+            
         # Determine target key and shift requirement
         target_key = None
         shift_required = False
         
-        if self.mode == 'english':
+        if current_char_mode == 'english':
             if original_target in self.special_char_mapping:
                 target_key = self.special_char_mapping[original_target]
                 shift_required = True
@@ -312,70 +475,84 @@ class TypingPractice:
             row_widget = row[0]
             # Iterate over each key in the current row.
             for col_idx, (col, _) in enumerate(row_widget.contents):
-                key_char = col.base_widget.get_text()[0]
+                # Reconstruct the default widget for this position
+                # We need to find which key this is.
+                found_key = None
+                for k, coords in self.key_coordinates.items():
+                    if coords == (row_idx, col_idx):
+                        found_key = k
+                        break
                 
-                # We need to find the original key char to check against target_coords
-                # This is a bit tricky because the display text might be Zhuyin now.
-                # Let's rely on coordinates.
-                
-                is_target = (row_idx, col_idx) == target_coords
-                
-                if not is_target:
-                     # Reconstruct the default widget for this position
-                     # We need to find which key this is.
-                     found_key = None
-                     for k, coords in self.key_coordinates.items():
-                         if coords == (row_idx, col_idx):
-                             found_key = k
-                             break
-                     
-                     if found_key:
-                         display_text = found_key
-                         if self.mode == 'zhuyin' and found_key.lower() in self.zhuyin_mapping:
-                             display_text = self.zhuyin_mapping[found_key.lower()]
-                         elif found_key in self.persistent_highlight_keys:
-                             display_text = found_key
+                if found_key:
+                    display_text = found_key
+                    
+                    # Determine display text based on mode
+                    if self.mode == 'zhuyin' and found_key.lower() in self.zhuyin_mapping:
+                        display_text = self.zhuyin_mapping[found_key.lower()]
+                    elif self.mode == 'mixed':
+                        # In mixed mode, reset to English labels by default?
+                        # Or keep the label of the current target?
+                        # If we reset, we should probably reset to English to be clean.
+                        # Unless the current target is Zhuyin, then we might want to show Zhuyin?
+                        # But this function resets ALL keys.
+                        # So let's reset to English for Mixed mode to keep it uniform.
+                        pass
+                    
+                    # Reset to default finger style
+                    lookup_key = found_key
+                    if '⇧' in found_key:
+                        lookup_key = '⇧'
+                    
+                    style = self._get_key_style(lookup_key, highlight=False)
 
-                         style = 'keyboard'
-                         if found_key in self.persistent_highlight_keys:
-                             style = 'key_default'
-
-                         self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
-                            urwid.AttrMap(urwid.Text(display_text, align='center'), style),
-                            ('pack', None, False)
-                        )
+                    self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+                    urwid.AttrMap(urwid.Text(display_text, align='center'), style),
+                    ('pack', None, False)
+                )
 
         # Reset Shift keys
         for shift_key in ["⇧ (L)", "⇧ (R)"]:
             if shift_key in self.key_coordinates:
                 shift_row, shift_col = self.key_coordinates[shift_key]
+                style = self._get_key_style('⇧', highlight=False)
                 self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
-                    urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_default'),
+                    urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                     ('pack', None, False)
                 )
         
-        if shift_required and self.mode == 'english':
+        if shift_required and current_char_mode == 'english':
             shift_key_to_use = "⇧ (L)" # Default
             if target_key in self.left_hand_keys:
                 shift_key_to_use = "⇧ (R)"
             
             if shift_key_to_use in self.key_coordinates:
                 shift_row, shift_col = self.key_coordinates[shift_key_to_use]
+                style = self._get_key_style('⇧', highlight=True)
                 self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
-                    urwid.AttrMap(urwid.Text("⇧", align='center'), 'key_highlight'),
+                    urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                     ('pack', None, False)
                 )
 
+    def toggle_mode_click(self, button):
+        self.toggle_mode()
+
     def toggle_mode(self):
-        self.mode = 'zhuyin' if self.mode == 'english' else 'english'
-        self.txt_mode.set_text(('bold', f"Mode: {self.mode.capitalize()}"))
+        self.mode_index = (self.mode_index + 1) % len(self.modes)
+        self.mode = self.modes[self.mode_index]
+        self.mode_button_text.set_text(self._get_mode_text())
         
         # Update keyboard labels
         for key_char, key_obj in self.keys_objects.items():
             key_obj.set_mode(self.mode)
-            # We need to refresh the layout with new text
-            # But since we are reconstructing the layout in _reset_keyboard_highlight mostly,
-            # we just need to trigger a reset/redraw.
+        
+        # Recreate keyboard padding to adjust width
+        if self.show_keyboard:
+            # Remove old padding
+            self.pile.contents = [c for c in self.pile.contents if c[0] != self.keyboard_padding]
+            # Create new padding
+            self.keyboard_padding = self._create_keyboard_padding()
+            # Insert new padding
+            self.pile.contents.insert(-1, (self.keyboard_padding, ('pack', None)))
             
         self.current_char = self._generate_random_char()
         self.txt_target.set_text([('bold', "Target Character: "), ('bold_target', f" {self.current_char} ")])
@@ -412,10 +589,19 @@ class TypingPractice:
             mapped_key = key_upper
             if self.mode == 'english':
                 mapped_key = self.special_char_mapping.get(key_upper, key_upper)
+            elif self.mode == 'mixed':
+                # If mixed, we assume English mapping unless it's a Zhuyin char?
+                # But the user types on an English keyboard.
+                mapped_key = self.special_char_mapping.get(key_upper, key_upper)
             
             # Check correctness
             is_correct = False
-            if self.mode == 'english':
+            
+            current_char_mode = 'english'
+            if self.current_char in self.zhuyin_mapping.values():
+                current_char_mode = 'zhuyin'
+                
+            if current_char_mode == 'english':
                 if key == self.current_char:
                     is_correct = True
             else: # Zhuyin
@@ -424,18 +610,18 @@ class TypingPractice:
                     is_correct = True
             
             # Visual feedback on keyboard
-            target_key_for_highlight = mapped_key # Default
-            if self.mode == 'zhuyin':
-                 # If we pressed '1', mapped_key is '1'. 
-                 # If target was 'ㄅ', and we pressed '1', it's correct.
-                 pass
-
             if mapped_key in self.key_coordinates:
                 row_idx, col_idx = self.key_coordinates[mapped_key]
                 
                 display_text = mapped_key
                 if self.mode == 'zhuyin' and mapped_key.lower() in self.zhuyin_mapping:
                     display_text = self.zhuyin_mapping[mapped_key.lower()]
+                elif self.mode == 'mixed':
+                     # In mixed mode, show what was typed?
+                     # If we typed 'a', show 'a'. If we typed '1', show '1'.
+                     # If the target was Zhuyin, maybe show the Zhuyin char?
+                     # Let's stick to showing the key label (English) for consistency in Mixed mode
+                     pass
 
                 if is_correct:
                     self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
@@ -487,7 +673,10 @@ class TypingPractice:
     def run(self):
         if self.show_keyboard:
             self._highlight_key(self.current_char)
-        self.loop.run()
+        try:
+            self.loop.run()
+        except KeyboardInterrupt:
+            pass # Exit gracefully
 
 if __name__ == '__main__':
     app = TypingPractice()
