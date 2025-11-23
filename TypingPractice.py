@@ -106,14 +106,25 @@ class TypingPractice:
         # Graphical Mode Buttons
         self.mode_buttons = []
         self.mode_buttons_widgets = []
-        for m in self.modes:
+        total_mode_width = 0
+        for i, m in enumerate(self.modes):
             btn = urwid.Button("")
-            icon = urwid.SelectableIcon(self._get_mode_label(m), 0)
+            label = self._get_mode_label(m)
+            icon = urwid.SelectableIcon(label, 0)
             btn._w = urwid.AttrMap(icon, 'mode_button', 'mode_button_focus')
-            urwid.connect_signal(btn, 'click', self.on_mode_click, m)
+            urwid.connect_signal(btn, 'click', self.on_mode_click, user_args=[m])
             self.mode_buttons.append(btn)
             self.mode_buttons_widgets.append(('pack', btn))
             
+            # Calculate width
+            w = 0
+            for char in label:
+                if ord(char) > 127: w += 2
+                else: w += 1
+            total_mode_width += w
+            if i < len(self.modes) - 1:
+                total_mode_width += 3 # dividechars
+
         self.mode_columns = urwid.Columns(self.mode_buttons_widgets, dividechars=3)
 
         self.toggle_button_text = urwid.SelectableIcon(('bold', f"▼ {str_vkey_tip}"), 0, align='center')
@@ -128,7 +139,7 @@ class TypingPractice:
 
         self.pile = urwid.Pile([
             urwid.Divider(),
-            ('pack', urwid.Padding(self.mode_columns, align='center', width='pack')),
+            ('pack', urwid.Padding(self.mode_columns, align='center', width=total_mode_width)),
             urwid.Divider(),
             self.txt_target,
             urwid.Divider(),
@@ -249,9 +260,10 @@ class TypingPractice:
 
         max_row_width = 0
         for row in self.keyboard_layout.contents:
-            row_widget = row[0]
+            row_widget = row[0] # Padding
+            columns_widget = row_widget.original_widget # Columns
             current_row_width = 0
-            for col, options in row_widget.contents:
+            for col, options in columns_widget.contents:
                 text_widget = col.base_widget
                 text = text_widget.text
                 w = 0
@@ -264,7 +276,7 @@ class TypingPractice:
         return urwid.Padding(
             self.keyboard_box,
             align='center',
-            width=max_row_width + 4,  # Reduced padding for better centering
+            width=max_row_width + 2,  # Tight padding
             min_width=40,
             left=0,
             right=0
@@ -330,7 +342,9 @@ class TypingPractice:
                 col_idx += 1
             
             row_widget = urwid.Columns(row_buttons, dividechars=0)
-            keyboard_widgets.append(row_widget)
+            # Center each row
+            centered_row = urwid.Padding(row_widget, align='center', width='pack')
+            keyboard_widgets.append(centered_row)
 
         return urwid.Pile(keyboard_widgets)
 
@@ -378,7 +392,13 @@ class TypingPractice:
 
             style = self._get_key_style(key_to_highlight, highlight=True)
 
-            self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+            # Access Padding -> Columns -> Column
+            # self.keyboard_layout.contents[row_idx] is (Padding, options)
+            # Padding.original_widget is Columns
+            padding_widget = self.keyboard_layout.contents[row_idx][0]
+            columns_widget = padding_widget.original_widget
+            
+            columns_widget.contents[col_idx] = (
                 urwid.AttrMap(urwid.Text(display_text, align='center'), style),
                 ('pack', None, False)
             )
@@ -392,7 +412,11 @@ class TypingPractice:
                 if shift_key_to_use in self.key_coordinates:
                     shift_row, shift_col = self.key_coordinates[shift_key_to_use]
                     style = self._get_key_style(shift_key_to_use, highlight=True)
-                    self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                    
+                    padding_widget = self.keyboard_layout.contents[shift_row][0]
+                    columns_widget = padding_widget.original_widget
+                    
+                    columns_widget.contents[shift_col] = (
                         urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                         ('pack', None, False)
                     )
@@ -422,8 +446,9 @@ class TypingPractice:
                     break
 
         for row_idx, row in enumerate(self.keyboard_layout.contents):
-            row_widget = row[0]
-            for col_idx, (col, _) in enumerate(row_widget.contents):
+            row_widget = row[0] # Padding
+            columns_widget = row_widget.original_widget # Columns
+            for col_idx, (col, _) in enumerate(columns_widget.contents):
                 found_key = None
                 for k, coords in self.key_coordinates.items():
                     if coords == (row_idx, col_idx):
@@ -442,7 +467,7 @@ class TypingPractice:
                     
                     style = self._get_key_style(lookup_key, highlight=False)
 
-                    self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+                    columns_widget.contents[col_idx] = (
                     urwid.AttrMap(urwid.Text(display_text, align='center'), style),
                     ('pack', None, False)
                 )
@@ -451,7 +476,11 @@ class TypingPractice:
             if shift_key in self.key_coordinates:
                 shift_row, shift_col = self.key_coordinates[shift_key]
                 style = self._get_key_style(shift_key, highlight=False)
-                self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                
+                padding_widget = self.keyboard_layout.contents[shift_row][0]
+                columns_widget = padding_widget.original_widget
+                
+                columns_widget.contents[shift_col] = (
                     urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                     ('pack', None, False)
                 )
@@ -465,7 +494,11 @@ class TypingPractice:
                 display_text = self.zhuyin_mapping[target_key.lower()]
             
             style = self._get_key_style(target_key, highlight=True)
-            self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+            
+            padding_widget = self.keyboard_layout.contents[row_idx][0]
+            columns_widget = padding_widget.original_widget
+            
+            columns_widget.contents[col_idx] = (
                 urwid.AttrMap(urwid.Text(display_text, align='center'), style),
                 ('pack', None, False)
             )
@@ -478,7 +511,11 @@ class TypingPractice:
             if shift_key_to_use in self.key_coordinates:
                 shift_row, shift_col = self.key_coordinates[shift_key_to_use]
                 style = self._get_key_style(shift_key_to_use, highlight=True)
-                self.keyboard_layout.contents[shift_row][0].contents[shift_col] = (
+                
+                padding_widget = self.keyboard_layout.contents[shift_row][0]
+                columns_widget = padding_widget.original_widget
+                
+                columns_widget.contents[shift_col] = (
                     urwid.AttrMap(urwid.Text("⇧", align='center'), style),
                     ('pack', None, False)
                 )
@@ -522,13 +559,16 @@ class TypingPractice:
                 if self.mode == 'zhuyin' and mapped_key.lower() in self.zhuyin_mapping:
                     display_text = self.zhuyin_mapping[mapped_key.lower()]
 
+                padding_widget = self.keyboard_layout.contents[row_idx][0]
+                columns_widget = padding_widget.original_widget
+
                 if is_correct:
-                    self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+                    columns_widget.contents[col_idx] = (
                         urwid.AttrMap(urwid.Text(display_text, align='center'), 'key_correct'),
                         ('pack', None, False)
                     )
                 else:
-                    self.keyboard_layout.contents[row_idx][0].contents[col_idx] = (
+                    columns_widget.contents[col_idx] = (
                         urwid.AttrMap(urwid.Text(display_text, align='center'), 'key_wrong'),
                         ('pack', None, False)
                     )
