@@ -60,11 +60,9 @@ class TypingPractice:
         self.show_keyboard = True
         self.modes = ['english', 'zhuyin', 'mixed']
         self.mode = 'english'
+        self.label_modes = ['default', 'english', 'zhuyin']
+        self.label_mode = 'default'
         
-        self.current_char = self._generate_random_char()
-        self.correct_count = 0
-        self.total_count = 0
-
         # Define key position mappings
         self.key_positions = {
             '⇧ (L)': (3, 0, 3),
@@ -99,9 +97,13 @@ class TypingPractice:
         self.finger_mapping["―       ―"] = 'thumb'
         self.finger_mapping[" "] = 'thumb'
 
+        self.current_char = self._generate_random_char()
+        self.correct_count = 0
+        self.total_count = 0
+
         self.txt_target = urwid.Text([('bold', "Target Character: "), ('bold_target', f" {self.current_char} ")], align='center')
         self.txt_stats = urwid.Text(('bold', "Accuracy: 0% (0/0)"), align='center')
-        self.txt_instruction = urwid.Text(('instruction', "Press ESC to exit"), align='center')
+        self.txt_instruction = urwid.Text(('instruction', "Press ESC to exit | F1: Toggle Keyboard | F2: Toggle Labels"), align='center')
         
         # Graphical Mode Buttons
         self.mode_buttons = []
@@ -189,7 +191,7 @@ class TypingPractice:
             ],
             unhandled_input=self.handle_input
         )
-
+        
         self.persistent_highlight_keys = ['⇧', '⭾', '↲', '⇪', '⇦', "―       ―"]
         
         self.left_hand_keys = set([
@@ -198,6 +200,12 @@ class TypingPractice:
             'A', 'S', 'D', 'F', 'G',
             'Z', 'X', 'C', 'V', 'B'
         ])
+    def update_key_labels(self):
+        for key_char, key_obj in self.keys_objects.items():
+            mode_to_use = self.mode
+            if self.label_mode != 'default':
+                mode_to_use = self.label_mode
+            key_obj.set_mode(mode_to_use)
 
     def _get_mode_label(self, mode):
         icon = "■" if self.mode == mode else "□"
@@ -215,8 +223,7 @@ class TypingPractice:
         for i, m in enumerate(self.modes):
             self.mode_buttons[i]._w.base_widget.set_text(self._get_mode_label(m))
             
-        for key_char, key_obj in self.keys_objects.items():
-            key_obj.set_mode(self.mode)
+        self.update_key_labels()
         
         if self.show_keyboard:
             self.pile.contents = [c for c in self.pile.contents if c[0] != self.keyboard_padding]
@@ -233,6 +240,14 @@ class TypingPractice:
             self._reset_keyboard_highlight()
             self._highlight_key(self.current_char)
             
+        self.loop.draw_screen()
+        
+    def toggle_label_mode(self):
+        current_index = self.label_modes.index(self.label_mode)
+        next_index = (current_index + 1) % len(self.label_modes)
+        self.label_mode = self.label_modes[next_index]
+        
+        self.update_key_labels()
         self.loop.draw_screen()
 
     def _get_key_style(self, key_char, highlight=False):
@@ -255,23 +270,32 @@ class TypingPractice:
         self.keyboard_box = urwid.LineBox(self.keyboard_widget)
 
         # Update all key modes BEFORE measuring width
-        for key_char, key_obj in self.keys_objects.items():
-            key_obj.set_mode(self.mode)
+        self.update_key_labels()
 
         max_row_width = 0
-        for row in self.keyboard_layout.contents:
-            row_widget = row[0] # Padding
-            columns_widget = row_widget.original_widget # Columns
-            current_row_width = 0
-            for col, options in columns_widget.contents:
-                text_widget = col.base_widget
-                text = text_widget.text
-                w = 0
-                for char in text:
-                    if ord(char) > 127: w += 2
-                    else: w += 1
-                current_row_width += w
-            max_row_width = max(max_row_width, current_row_width)
+        try:
+            for row in self.keyboard_layout.contents:
+                row_widget = row[0] # Padding
+                columns_widget = row_widget.original_widget # Columns
+                current_row_width = 0
+                for col, options in columns_widget.contents:
+                    if isinstance(col, urwid.AttrMap):
+                        text_widget = col.base_widget
+                    else:
+                        text_widget = col
+                    
+                    text = text_widget.text
+                    w = 0
+                    for char in text:
+                        if ord(char) > 127: w += 2
+                        else: w += 1
+                    current_row_width += w
+                max_row_width = max(max_row_width, current_row_width)
+        except Exception as e:
+            with open("debug_crash.log", "a") as f:
+                import traceback
+                f.write(traceback.format_exc())
+            max_row_width = 60
             
         return urwid.Padding(
             self.keyboard_box,
@@ -384,10 +408,13 @@ class TypingPractice:
         if key_to_highlight in self.key_coordinates:
             row_idx, col_idx = self.key_coordinates[key_to_highlight]
             
-            # In Mixed mode, always show English key label (not Zhuyin)
+            # Determine display text based on label_mode
             display_text = key_to_highlight
-            
-            if self.mode == 'zhuyin' and key_to_highlight.lower() in self.zhuyin_mapping:
+            mode_to_use = self.mode
+            if self.label_mode != 'default':
+                mode_to_use = self.label_mode
+                
+            if mode_to_use == 'zhuyin' and key_to_highlight.lower() in self.zhuyin_mapping:
                  display_text = self.zhuyin_mapping[key_to_highlight.lower()]
 
             style = self._get_key_style(key_to_highlight, highlight=True)
@@ -458,7 +485,11 @@ class TypingPractice:
                 if found_key:
                     display_text = found_key
                     
-                    if self.mode == 'zhuyin' and found_key.lower() in self.zhuyin_mapping:
+                    mode_to_use = self.mode
+                    if self.label_mode != 'default':
+                        mode_to_use = self.label_mode
+                    
+                    if mode_to_use == 'zhuyin' and found_key.lower() in self.zhuyin_mapping:
                         display_text = self.zhuyin_mapping[found_key.lower()]
                     
                     lookup_key = found_key
@@ -490,7 +521,12 @@ class TypingPractice:
             row_idx, col_idx = self.key_coordinates[target_key]
             
             display_text = target_key
-            if self.mode == 'zhuyin' and target_key.lower() in self.zhuyin_mapping:
+            
+            mode_to_use = self.mode
+            if self.label_mode != 'default':
+                mode_to_use = self.label_mode
+                
+            if mode_to_use == 'zhuyin' and target_key.lower() in self.zhuyin_mapping:
                 display_text = self.zhuyin_mapping[target_key.lower()]
             
             style = self._get_key_style(target_key, highlight=True)
@@ -524,6 +560,14 @@ class TypingPractice:
         if key == 'esc':
             raise urwid.ExitMainLoop()
         
+        if key == 'f1':
+            self.toggle_keyboard(None)
+            return
+            
+        if key == 'f2':
+            self.toggle_label_mode()
+            return
+        
         if key == 'tab':
             self.toggle_keyboard(None)
             return
@@ -556,7 +600,12 @@ class TypingPractice:
                 row_idx, col_idx = self.key_coordinates[mapped_key]
                 
                 display_text = mapped_key
-                if self.mode == 'zhuyin' and mapped_key.lower() in self.zhuyin_mapping:
+                
+                mode_to_use = self.mode
+                if self.label_mode != 'default':
+                    mode_to_use = self.label_mode
+                
+                if mode_to_use == 'zhuyin' and mapped_key.lower() in self.zhuyin_mapping:
                     display_text = self.zhuyin_mapping[mapped_key.lower()]
 
                 padding_widget = self.keyboard_layout.contents[row_idx][0]
