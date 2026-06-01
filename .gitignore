@@ -1,3 +1,7 @@
 /.vscode
+/.qtcreator
 /mess_chat
 /test
+*.user
+__pycache__/
+*.py[cod]

@@ -1,0 +1,16 @@
+{
+    "files": [
+        "run_gui.py",
+        "TypingPractice.py",
+        "typefaster/__init__.py",
+        "typefaster/__main__.py",
+        "typefaster/core/__init__.py",
+        "typefaster/core/layout.py",
+        "typefaster/core/session.py",
+        "typefaster/gui/__init__.py",
+        "typefaster/gui/app.py",
+        "typefaster/tui/__init__.py",
+        "typefaster/tui/__main__.py",
+        "typefaster/tui/app.py"
+    ]
+}

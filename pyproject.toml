@@ -1,0 +1,30 @@
+[project]
+name = "typefaster"
+version = "0.1.0"
+description = "Keyboard typing practice with TUI and PySide6 GUI frontends."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.6",
+    "urwid>=2.6",
+]
+
+[project.scripts]
+typefaster = "typefaster.gui.app:main"
+typefaster-tui = "typefaster.tui.app:main"
+
+[tool.pyside6-project]
+files = [
+    "run_gui.py",
+    "TypingPractice.py",
+    "typefaster/__init__.py",
+    "typefaster/__main__.py",
+    "typefaster/core/__init__.py",
+    "typefaster/core/layout.py",
+    "typefaster/core/session.py",
+    "typefaster/gui/__init__.py",
+    "typefaster/gui/app.py",
+    "typefaster/tui/__init__.py",
+    "typefaster/tui/__main__.py",
+    "typefaster/tui/app.py",
+]
